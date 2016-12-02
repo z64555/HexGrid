@@ -96,14 +96,16 @@ HexMesh Mesh;
 
 
 void HexGrid::generate(float x_orig, float y_orig, float grid_size, int n, bool x_maj) {
+	const float sin60 = 0.8660254;	// sin(60deg) = 0.8660254
+
 	float maj_off = (grid_size / (n * 2));
-	float min_off = maj_off / (0.8660254 * 2);	// sin(60deg) = 0.8660254
+	float min_off = maj_off / (sin60 * 2);
 
 	major_axis = x_maj;
 	// Seems to be a glitch with trying to use vector<float> *maj_lines in MSVS. Compiler won't see the function arguments after trying to set maj_lines = &x_lines
 
 	// Major
-	for (int i = 0; i < (n * 2); ++i) {
+	for (int i = 0; i < (n * 2) + 1; ++i) {
 		if (x_maj) {
 			x_axis.push_back(x_orig + (maj_off * i));
 		} else {
@@ -112,24 +114,25 @@ void HexGrid::generate(float x_orig, float y_orig, float grid_size, int n, bool 
 	}
 
 	// Minor
-	for (int i = 1; i < (n * 4); ++i) {
-		if (i % 3 == 0) {
-			// Skip every fourth multiple
+	for (int i = 0; i < int((n * 4) * sin60) + 1; ++i) {
+		if ((i + 1) % 3 == 0) {
+			// Skip every third multiple
 			continue;
 		}
 
 		if (!x_maj) {
-			x_axis.push_back(x_orig + (min_off * (i - 1)));
+			x_axis.push_back(x_orig + (min_off * i));
 		} else {
-			y_axis.push_back(y_orig + (min_off * (i - 1)));
+			y_axis.push_back(y_orig + (min_off * i));
 		}
 	}
 }
 
 
 void HexMesh::generate() {
-	int n = 10;
-	Grid.generate(-1.0f, -1.0f, 2.0f, n, false);
+	int n = 9;
+	bool major = false;
+	Grid.generate(-1.0f, -1.0f, 2.0f, n, major);
 	vec3d vert = { 0.0f, 0.0f, 0.0f };
 
 	size_t major_size = Grid.y_axis.size();	// Number of vertices along the Y (major) axis
@@ -141,40 +144,23 @@ void HexMesh::generate() {
 	v_arr.reserve(major_size * minor_size);	// TODO: Find a closer approximation. This one will reserve way more than what's needed
 
 	// Create vertex strips up the major axis
-	bool zig;
-	for (int j = 1; j < (minor_size - 1);) {
+	int j = 0;
+	bool zig = ((j % 2) == 1);;
+	for (; j < (minor_size - 1); j += 2) {
 		for (int i = 0; i < major_size; ++i) {
-			zig = (j % 2) == 1;
-
-			vert.x = Grid.x_axis[j];	// Minor axis
-			vert.y = Grid.y_axis[i];	// Major axis
-			v_arr.push_back(vert);
-
-			// Zig-zag along the major axis
 			if (zig) {
-				j -= 1;
-				assert(j >= 0);
+				vert.x = Grid.x_axis[j];	// Minor axis
+				vert.y = Grid.y_axis[i];	// Major axis
 			} else {
-				j += 1;
-				assert(j < minor_size);
+				vert.x = Grid.x_axis[j + 1];	// Minor axis
+				vert.y = Grid.y_axis[i];		// Major axis
 			}
-		}
 
-		if (zig) {
-			j += 3;
-		} else {
-			j += 1;
-		}
-	}
-
-	// Create points at all grid intersections
-	/*for (auto j = 0; j < minor_size; ++j) {
-		for (auto i = 0; i < major_size; ++i) {
-			vert.x = Grid.x_axis[j];
-			vert.y = Grid.y_axis[i];
 			v_arr.push_back(vert);
+			zig = !zig;
 		}
-	}*/
+//		zig = !zig;
+	}
 }
 
 bool init_resources() {
@@ -286,11 +272,20 @@ void render(SDL_Window* window) {
 
 	size_t major_size = Mesh.Grid.y_axis.size();
 	size_t minor_size = Mesh.Grid.x_axis.size();
+	size_t count = minor_size / 2;
 
 	glDrawArrays(GL_POINTS, 0, Mesh.v_arr.size());
 
-	for (int i = 0; i < (minor_size / 2); ++i) {
+	for (int i = 0; i < (count - 1); ++i) {
 		glDrawArrays(GL_LINE_STRIP, (major_size * i), major_size);
+	}
+
+	if (count % 2) {
+		// Odd number of major lines, so skip the first and last segments
+		glDrawArrays(GL_LINE_STRIP, (major_size * (count - 1)) + 1, major_size - 2);
+	} else {
+		// Even number of major lines, draw the last line normally
+		glDrawArrays(GL_LINE_STRIP, (major_size * (count - 1)), major_size);
 	}
 
 	// Draw minor lines
@@ -304,9 +299,10 @@ void render(SDL_Window* window) {
 			&Mesh.v_arr[j]     // pointer to the C array
 			);
 
-		glDrawArrays(GL_LINES, 0, minor_size / 2);
+		glDrawArrays(GL_LINES, 0, count);
 	}
 
+	count += count % 2;
 	for (int j = 1; j < major_size; j += 2) {
 		glVertexAttribPointer(
 			attribute_coord2d, // attribute
@@ -317,7 +313,7 @@ void render(SDL_Window* window) {
 			&Mesh.v_arr[j]     // pointer to the C array
 			);
 
-		glDrawArrays(GL_LINES, 1, (minor_size / 2) - 1);
+		glDrawArrays(GL_LINES, 1, count - 2);
 	}
 
 	// Draw reference square
