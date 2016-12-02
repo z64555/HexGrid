@@ -59,18 +59,18 @@ public:
 	/**
 	* @brief Generates a hexagonal grid
 	*
-	* @param[in] x_orig Origin offset of the X axis
-	* @param[in] y_orig Origin offset of the Y axis
-	* @param[in] size   Maximum X (and Y) value
-	* @param[in] n      Number of divisions along the major axis
-	* @param[in] x_maj Major axis. False = Y axis, True = X axis
+	* @param[in] maj_orig   Origin offset of the major axis
+	* @param[in] min_orig   Origin offset of the minor axis
+	* @param[in] grid_size  Maximum value for both axes
+	* @param[in] n          Number of divisions along the major axis
+	* @param[in] centered   If true, the grid will be centered around the origin. Else, the grid will have one corner
+	*                       in the origin.
 	* @details The major axis is the one where adjacent hexagons share an edge, and the minor axis is the one where adjacent hexagons share only a vertex.
 	*/
-	void generate(float x_orig, float y_orig, float grid_size, int n, bool x_maj);
+	void generate(float maj_orig, float min_orig, float grid_size, int n, bool centered);
 
-	bool major_axis;		// False = Y axis is major, True = X axis is major
-	vector<float> x_axis;
-	vector<float> y_axis;
+	vector<float> major_axis;
+	vector<float> minor_axis;
 };
 
 class HexMesh
@@ -95,22 +95,19 @@ const int screen_height = 480;
 HexMesh Mesh;
 
 
-void HexGrid::generate(float x_orig, float y_orig, float grid_size, int n, bool x_maj) {
+void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, bool centered) {
 	const float sin60 = 0.8660254;	// sin(60deg) = 0.8660254
-
 	float maj_off = (grid_size / (n * 2));
 	float min_off = maj_off / (sin60 * 2);
 
-	major_axis = x_maj;
+	if (centered) {
+		maj_orig -= grid_size / 2;
+		min_orig -= (grid_size / (2 * sin60)) - (2 * min_off);
+	}
 	// Seems to be a glitch with trying to use vector<float> *maj_lines in MSVS. Compiler won't see the function arguments after trying to set maj_lines = &x_lines
-
 	// Major
 	for (int i = 0; i < (n * 2) + 1; ++i) {
-		if (x_maj) {
-			x_axis.push_back(x_orig + (maj_off * i));
-		} else {
-			y_axis.push_back(y_orig + (maj_off * i));
-		}
+		major_axis.push_back(maj_orig + (maj_off * i));
 	}
 
 	// Minor
@@ -120,23 +117,19 @@ void HexGrid::generate(float x_orig, float y_orig, float grid_size, int n, bool 
 			continue;
 		}
 
-		if (!x_maj) {
-			x_axis.push_back(x_orig + (min_off * i));
-		} else {
-			y_axis.push_back(y_orig + (min_off * i));
-		}
+		minor_axis.push_back(min_orig + (min_off * i));
 	}
 }
 
 
 void HexMesh::generate() {
-	int n = 9;
-	bool major = false;
-	Grid.generate(-1.0f, -1.0f, 2.0f, n, major);
+	int n = 8;
+	bool centered = true;
+	Grid.generate( 0.0f, 0.0f, 2.0f, n, centered);
 	vec3d vert = { 0.0f, 0.0f, 0.0f };
 
-	size_t major_size = Grid.y_axis.size();	// Number of vertices along the Y (major) axis
-	size_t minor_size = Grid.x_axis.size();	// Number of vertices along the X (minor) axis
+	size_t major_size = Grid.major_axis.size();	// Number of vertices along the Y (major) axis
+	size_t minor_size = Grid.minor_axis.size();	// Number of vertices along the X (minor) axis
 
 	y_size = major_size / 2;
 	x_size = minor_size / 2;
@@ -149,11 +142,11 @@ void HexMesh::generate() {
 	for (; j < (minor_size - 1); j += 2) {
 		for (int i = 0; i < major_size; ++i) {
 			if (zig) {
-				vert.x = Grid.x_axis[j];	// Minor axis
-				vert.y = Grid.y_axis[i];	// Major axis
+				vert.x = Grid.minor_axis[j];	// Minor axis
+				vert.y = Grid.major_axis[i];	// Major axis
 			} else {
-				vert.x = Grid.x_axis[j + 1];	// Minor axis
-				vert.y = Grid.y_axis[i];		// Major axis
+				vert.x = Grid.minor_axis[j + 1];	// Minor axis
+				vert.y = Grid.major_axis[i];		// Major axis
 			}
 
 			v_arr.push_back(vert);
@@ -270,8 +263,8 @@ void render(SDL_Window* window) {
 		&Mesh.v_arr[0]     // pointer to the C array
 	);
 
-	size_t major_size = Mesh.Grid.y_axis.size();
-	size_t minor_size = Mesh.Grid.x_axis.size();
+	size_t major_size = Mesh.Grid.major_axis.size();
+	size_t minor_size = Mesh.Grid.minor_axis.size();
 	size_t count = minor_size / 2;
 
 	glDrawArrays(GL_POINTS, 0, Mesh.v_arr.size());
@@ -329,11 +322,30 @@ void render(SDL_Window* window) {
 		2,                 // number of elements per vertex, here (x,y)
 		GL_FLOAT,          // the type of each element
 		GL_FALSE,          // take our values as-is
-		0,                  // No data between verts
-		square     // pointer to the C array
+		0,                 // No data between verts
+		square             // pointer to the C array
 		);
 
 	glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+	// Draw reference cross
+	GLfloat cross[] = {
+		-1.0f, -1.0f,
+		 1.0f,  1.0f,
+		-1.0f,  1.0f,
+		 1.0f, -1.0f
+	};
+
+	glVertexAttribPointer(
+		attribute_coord2d, // attribute
+		2,                 // number of elements per vertex, here (x,y)
+		GL_FLOAT,          // the type of each element
+		GL_FALSE,          // take our values as-is
+		0,                 // No data between verts
+		cross              // pointer to the C array
+		);
+
+	glDrawArrays(GL_LINES, 0, 4);
 
 	glDisableVertexAttribArray(attribute_coord2d);
 
