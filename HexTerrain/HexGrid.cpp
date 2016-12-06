@@ -96,24 +96,47 @@ HexMesh Mesh;
 
 
 void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, bool centered) {
-	const float sin60 = 0.8660254;	// sin(60deg) = 0.8660254
-	float maj_off = (grid_size / (n * 2));
-	float min_off = maj_off / (sin60 * 2);
+	const float sin60 = 0.8660254;			// sin(60deg) = 0.8660254
+	float maj_off = (grid_size / (n * 2));		// Offsets along the major axis
+	float r = (grid_size / (n * 2)) / sin60;	// Radius of the hexagon
+	float min_off = r / 2;						// Offsets along the minor axis
 
 	if (centered) {
 		maj_orig -= grid_size / 2;
-		min_orig -= (grid_size / (2 * sin60)) - (2 * min_off);
+		min_orig -= (r * (2 + 3 * (int)(n / 2))) / 2;
 	}
 	// Seems to be a glitch with trying to use vector<float> *maj_lines in MSVS. Compiler won't see the function arguments after trying to set maj_lines = &x_lines
 	// Major
-	for (int i = 0; i < (n * 2) + 1; ++i) {
+	for (int i = 0; i < ((n * 2) + 1); ++i) {
+		// Number of major graduations per hexagon (Lines where vertices are)) = 3;
+		// Each additional hexagon adds 2 graduations, so the total is (n * 2) + 1
 		major_axis.push_back(maj_orig + (maj_off * i));
 	}
 
+	int m;
+	if (centered) {
+		// odd values of n give a nice super-hexagon, while
+		// even values of n give a parallelogram
+		m = n | 1;	// +1 to even numbers to make them odd.
+	} else {
+		// Try to fit within square
+		if (n == 1) {
+			// Special case. Hexagon will spill outside the square along the minor edge
+			m = 1;
+		} else {
+			m = n * sin60;
+		}
+	}
+
 	// Minor
-	for (int i = 0; i < int((n * 4) * sin60) + 1; ++i) {
+	for (int i = 0; i < ((m * 3) + 2); ++i) {
+		// Number of minor graduataions per hexagon = 4 + 1
+		// Each additional hexagon adds 2 + 1 graduations, so the total is (m * 3) + 2
+		// Doing a few tricks here. A regular hexagon can be composed of 6 equilateral triangles.
+		// If an eqilateral triangle has its base along an axis, such as the x axis, the apex is located exactly in between the two foot vertices. (x, y) = (b/2, h);
+		// Thus, a hexagon can be formed from (m * 3) + 1 graduations, plus one "phantom" graduation in the dead center of each hexagon. (m * 4) + 1;
 		if ((i + 1) % 3 == 0) {
-			// Skip every third multiple
+			// Skip every third multiple, the "phantom" graduation
 			continue;
 		}
 
@@ -123,9 +146,9 @@ void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, b
 
 
 void HexMesh::generate() {
-	int n = 8;
-	bool centered = true;
-	Grid.generate( 0.0f, 0.0f, 2.0f, n, centered);
+	int n = 1;
+	Grid.generate(0.0f, 0.0f, 2.0f, n, true);
+	//Grid.generate(-1.0f,-1.0f, 2.0f, n, false);
 	vec3d vert = { 0.0f, 0.0f, 0.0f };
 
 	size_t major_size = Grid.major_axis.size();	// Number of vertices along the Y (major) axis
