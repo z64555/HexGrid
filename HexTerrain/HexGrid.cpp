@@ -100,20 +100,23 @@ void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, b
 	float maj_off = (grid_size / (n * 2));		// Offsets along the major axis
 	float r = (grid_size / (n * 2)) / sin60;	// Radius of the hexagon
 	float min_off = r / 2;						// Offsets along the minor axis
+	int m;
 
 	if (centered) {
 		maj_orig -= grid_size / 2;
 		min_orig -= (r * (2 + 3 * (int)(n / 2))) / 2;
 	}
-	// Seems to be a glitch with trying to use vector<float> *maj_lines in MSVS. Compiler won't see the function arguments after trying to set maj_lines = &x_lines
-	// Major
-	for (int i = 0; i < ((n * 2) + 1); ++i) {
+
+	// Major axis
+	m = ((n * 2) + 1);
+	for (int i = 0; i < m; ++i) {
 		// Number of major graduations per hexagon (Lines where vertices are)) = 3;
 		// Each additional hexagon adds 2 graduations, so the total is (n * 2) + 1
 		major_axis.push_back(maj_orig + (maj_off * i));
 	}
 
-	int m;
+	// Minor axis
+	// First calculate number of hexagons to plot
 	if (centered) {
 		// odd values of n give a nice super-hexagon, while
 		// even values of n give a parallelogram
@@ -124,12 +127,15 @@ void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, b
 			// Special case. Hexagon will spill outside the square along the minor edge
 			m = 1;
 		} else {
-			m = n * sin60;
+			// A regular hexagon's diameter is (1 / sin60) * h;
+			// If its height is 1.0f, then its width is 1.155. Likewise, if we have a maximum of n cells on the major axis, then we have (1.155 * n) cells on the minor axis that will fit in a square
+			m = int(float(n) / sin60);
 		}
 	}
 
-	// Minor
-	for (int i = 0; i < ((m * 3) + 2); ++i) {
+	// Then, calculate number of graduations
+	m = (m * 3) + 2;
+	for (int i = 0; i < m; ++i) {
 		// Number of minor graduataions per hexagon = 4 + 1
 		// Each additional hexagon adds 2 + 1 graduations, so the total is (m * 3) + 2
 		// Doing a few tricks here. A regular hexagon can be composed of 6 equilateral triangles.
@@ -146,9 +152,9 @@ void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, b
 
 
 void HexMesh::generate() {
-	int n = 1;
-	Grid.generate(0.0f, 0.0f, 2.0f, n, true);
-	//Grid.generate(-1.0f,-1.0f, 2.0f, n, false);
+	int n = 9;
+	//Grid.generate(0.0f, 0.0f, 2.0f, n, true);
+	Grid.generate(-1.0f,-1.0f, 2.0f, n, false);
 	vec3d vert = { 0.0f, 0.0f, 0.0f };
 
 	size_t major_size = Grid.major_axis.size();	// Number of vertices along the Y (major) axis
