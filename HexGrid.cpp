@@ -69,6 +69,28 @@ public:
 	*/
 	void generate(float maj_orig, float min_orig, float grid_size, int n, bool centered);
 
+	/**
+	* @brief Rounds the incoming coordinates to the nearest hexagon center
+	* @param[in/out] maj Major coordinate
+	* @param[in/out] min Minor coordinate
+	* @param[in] dir Direction to round. False is towards grid origin, True is away from grid origin
+	*/
+	void round(float &maj, float &min);
+
+	// The grid's origin
+	struct
+	{
+		float major;
+		float minor;
+	} origin;
+
+	// Hexagon center-to-center distances
+	struct
+	{
+		float major;    // If the hexagon is regular, this unit's value = 2 * apothem
+		float minor;    // If the hexagon is regular, this unit's value = (3 / 2) * radius
+	} offset;
+
 	vector<float> major_axis;
 	vector<float> minor_axis;
 };
@@ -78,11 +100,21 @@ class HexMesh
 public:
 	void generate();
 
+	/**
+	 * Tesselates the mesh centered at (x, y) with radius r
+	 *
+	 * @param[in] x X coordinate of the target hexagon
+	 * @param[in] y Y coordinate of the target hexagon
+	 * @param[in] r Radius, in number of hexagons, around the target hexagon to tesselate. A value of 0 means only the target hexagon will be tesselated
+	 */
+	void tesselate(float x, float y, int r);
+
 	HexGrid Grid;
 	vector<vec3d> v_arr;	// Vertex array
 	vector<face> f_arr;		// Face array
 	size_t x_size;	// Number of gridlines along the X axis
 	size_t y_size;	// Number of gridlines along the Y axis
+	bool x_major;	// True if the x axis is major, false if the y axis is the major line
 };
 
 // Rendering globals
@@ -102,6 +134,13 @@ void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, b
 	float min_off = r / 2;						// Offsets along the minor axis
 	int m;
 
+	origin.major = maj_orig;
+	origin.minor = min_orig;
+
+	offset.major = grid_size / n;
+	offset.minor = (3 / 2) * r;
+
+	// From here on, min_origin and maj_origin are re-defined as the lower-left corner of the grid
 	if (centered) {
 		maj_orig -= grid_size / 2;
 		min_orig -= (r * (2 + 3 * (int)(n / 2))) / 2;
@@ -150,11 +189,51 @@ void HexGrid::generate(float maj_orig, float min_orig, float grid_size, int n, b
 	}
 }
 
+void HexGrid::round(float &maj, float &min) {
+	float major = maj - origin.major;
+	float minor = min - origin.minor;
+	bool is_odd = false;
+
+	minor /= offset.minor;
+	roundf(minor);
+	is_odd = int(minor) % 2;
+	min = minor * offset.minor;
+	min += origin.minor;
+
+	// Scale down
+	major /= offset.major;
+
+	// Shift away from center
+	if (is_odd) {
+		if (major > 0) {
+			major += 0.5f;
+		} else {
+			major -= 0.5f;
+		}
+	}
+
+	// Snap to nearest integer
+	roundf(major);
+
+	// Shift towards center
+	if (is_odd) {
+		if (major > 0) {
+			major -= 0.5f;
+		} else {
+			major += 0.5f;
+		}
+	}
+
+	// Scale up
+	maj = major * offset.major;
+	maj += origin.major;
+}
+
 
 void HexMesh::generate() {
 	int n = 9;
-	//Grid.generate(0.0f, 0.0f, 2.0f, n, true);
-	Grid.generate(-1.0f,-1.0f, 2.0f, n, false);
+	Grid.generate(0.0f, 0.0f, 2.0f, n, true);
+	//Grid.generate(-1.0f,-1.0f, 2.0f, n, false);
 	vec3d vert = { 0.0f, 0.0f, 0.0f };
 
 	size_t major_size = Grid.major_axis.size();	// Number of vertices along the Y (major) axis
